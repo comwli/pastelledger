@@ -16,13 +16,21 @@ async function start() {
     signIn: (e, p) => A.signInWithEmailAndPassword(auth, e, p),
     signUp: (e, p) => A.createUserWithEmailAndPassword(auth, e, p),
     reset: e => A.sendPasswordResetEmail(auth, e),
-    signOut: () => A.signOut(auth),
+    // 안 올라간 기록을 먼저 올리고(최대 5초) 로그아웃 → 기기 안 Firestore 사본까지 삭제
+    signOut: async () => {
+      const t = new Promise((_, no) => setTimeout(() => no({ code: "pending-writes" }), 5000));
+      await Promise.race([F.waitForPendingWrites(db), t]);
+      if (unsub) { unsub(); unsub = null; }
+      await A.signOut(auth);
+      await F.terminate(db);
+      await F.clearIndexedDbPersistence(db);
+    },
     save: d => ref ? F.setDoc(ref, d) : Promise.reject({ code: "no-user" })
   };
   A.onAuthStateChanged(auth, u => {
     if (unsub) { unsub(); unsub = null; }
     ref = u ? F.doc(db, "users", u.uid, "data", "ledger") : null;
-    window.onCloudUser(u ? u.email : null);
+    window.onCloudUser(u ? u.email : null, u ? u.uid : null);
     if (!u) return;
     // 내가 방금 쓴 값의 반영(hasPendingWrites)은 건너뜀
     unsub = F.onSnapshot(ref, s => { if (!s.metadata.hasPendingWrites) window.onCloudData(s.exists() ? s.data() : null); },

@@ -699,10 +699,19 @@ window.addEventListener("pagehide",()=>{if(timer)flush()});
 function replaceAll(d){S=blank();merge(d);ED.bud=ED.fixed=ED.save=ED.acc=false;editId=null;renderAll()}
 
 window.onCloudReady=on=>{cloudMode=on;$("acctBox").hidden=!on;if(on)status("로그인 확인 중…")};
-window.onCloudUser=email=>{cloudUser=email;$("auth").hidden=!!email;$("acctEmail").textContent=email||"";
-  if(email)status("불러오는 중…")};
+// 기기 사본의 주인(pl-owner = uid). 다른 계정이면 사본을 지우고, 주인 없는 사본은 물어보고 올림
+let prevOwner=null;
+window.onCloudUser=(email,uid)=>{cloudUser=email;$("auth").hidden=!!email;$("acctEmail").textContent=email||"";
+  if(!uid)return;
+  prevOwner=lsGet("pl-owner");
+  if(prevOwner&&prevOwner!==uid){try{localStorage.removeItem("pl-state")}catch(e){}replaceAll({});prevOwner=null}
+  lsSet("pl-owner",uid);status("불러오는 중…")};
 window.onCloudData=d=>{
-  if(!d){if(S.items.length||S.entries.length){flush();status("이 기기 데이터를 클라우드에 올렸어요")}else status("데이터가 없어요 · 설정에서 가져오세요");return}
+  if(!d){
+    const has=S.items.length||S.entries.length;
+    if(has&&(prevOwner||confirm("이 기기에 있던 가계부를 "+cloudUser+" 계정에 올릴까요?\n취소하면 이 기기 데이터를 지우고 빈 상태로 시작해요."))){prevOwner=lsGet("pl-owner");flush();status("이 기기 데이터를 클라우드에 올렸어요");return}
+    if(has){try{localStorage.removeItem("pl-state")}catch(e){}replaceAll({})}
+    status("데이터가 없어요 · 설정에서 가져오세요");return}
   const keep=S;S=blank();merge(d);const next=S;S=keep;
   if(JSON.stringify(next)===JSON.stringify(S)){status("클라우드와 동기화됨");return}
   replaceAll(d);lsSet("pl-state",JSON.stringify(S));status("클라우드와 동기화됨")};
@@ -718,7 +727,10 @@ $("authForm").addEventListener("submit",e=>{e.preventDefault();authRun((C,m,p)=>
 $("auSignup").addEventListener("click",()=>{if(!$("authForm").reportValidity())return;authRun((C,m,p)=>C.signUp(m,p))});
 $("auReset").addEventListener("click",()=>authRun(async(C,m)=>{await C.reset(m);$("auMsg").textContent=m+" 로 비밀번호 재설정 메일을 보냈어요."}).then(()=>{}));
 $("logoutBtn").addEventListener("click",async()=>{if(!confirm("로그아웃할까요? 이 기기에 남은 사본도 지워요."))return;
-  await Cloud.signOut();try{localStorage.removeItem("pl-state")}catch(e){}replaceAll({});$("setDlg").close()});
+  const msg=$("impMsg");msg.textContent="로그아웃 중…";
+  try{await Cloud.signOut()}catch(e){msg.textContent=e&&e.code==="pending-writes"?"아직 클라우드에 안 올라간 기록이 있어요. 인터넷 연결 후 다시 시도하세요.":"로그아웃 중 문제가 생겼어요. 다른 탭을 닫고 다시 시도하세요.";return}
+  try{localStorage.removeItem("pl-state");localStorage.removeItem("pl-owner")}catch(e){}
+  location.reload()});
 
 // ---- 백업 내보내기 / 가져오기 (같은 형식) ----
 async function exportBackup(){const name="pastelledger-backup-"+today()+".json",file=new File([JSON.stringify(plain())],name,{type:"application/json"});
