@@ -12,15 +12,15 @@
 | `firestore.rules` | Firestore 보안 규칙 (콘솔에 붙여넣기용) | O |
 | `manifest.webmanifest`, `sw.js` | 홈 화면 앱·오프라인 | O |
 | `icons/` | 홈 화면 아이콘 180/192/512 | O |
-| `assets/` | 원본 아이콘, 카테고리 아이콘 (`cat-*.png`) | O |
+| `assets/` | 앱 아이콘 원본(`icon-1024.png`), 빈 화면 그림(`empty.png`) | O |
 | `seed/ledger-seed.json` | 기존 가계부 데이터 (개인정보) | **X** (`.gitignore`) |
 | `make-icons.ps1` | `assets/icon-1024.png` → `icons/` 생성 | O |
 
 ## 이미지 교체
 
-- 원본은 `assets/original/`에 둠 (GitHub에 안 올림). 카테고리 아이콘은 `cat-<이름><1~6>.png`, 번호 = 테마 순서(레몬·핑크·라벤더·민트·스카이·피치)
+- 원본은 `assets/original/`에 둠 (GitHub에 안 올림)
 1. 원본을 `assets/original/`에 넣고 실행: `powershell -ExecutionPolicy Bypass -File optimize-assets.ps1`
-   → `assets/`에 아이콘 256px(가장자리 조각 제거), `empty.png` 800×600(회색 막 제거), `icon-1024.png` 생성
+   → `assets/`에 `empty.png` 800×600(회색 막 제거), `icon-1024.png` 생성
 2. 홈 화면 아이콘: `powershell -ExecutionPolicy Bypass -File make-icons.ps1`
 3. `sw.js`의 `CACHE` 값을 올림 (예: `pl-v3` → `pl-v4`) — 폰에 새 파일이 반영되도록
 

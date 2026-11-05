@@ -1,4 +1,4 @@
-﻿# assets/original 의 원본 → assets 에 앱용 사본 생성 (아이콘 256px·가장자리 조각 제거, empty 800x600·회색 막 제거, 앱 아이콘 1024px)
+﻿# assets/original 의 원본 → assets 에 앱용 사본 생성 (empty 800x600·회색 막 제거, 앱 아이콘 1024px)
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 using System; using System.Drawing; using System.Drawing.Imaging; using System.Collections.Generic;
@@ -33,12 +33,6 @@ public static class Px {
 }
 "@
 $root = $PSScriptRoot; $src = Join-Path $root "assets\original"; $dst = Join-Path $root "assets"
-foreach ($f in Get-ChildItem $src -Filter "cat-*.png") {
-  $img = [System.Drawing.Image]::FromFile($f.FullName); $b = [Px]::Fit($img, 256, 256); $img.Dispose()
-  $n = [Px]::DropEdgeBits($b, 0.02)
-  $b.Save((Join-Path $dst $f.Name), [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
-  if ($n -gt 0) { Write-Output "$($f.Name): edge pixels removed $n" }
-}
 $img = [System.Drawing.Image]::FromFile((Join-Path $src "empty.png")); $b = [Px]::Fit($img, 800, 600); $img.Dispose()
 Write-Output ("empty.png: faint pixels cleared " + [Px]::ClearFaint($b, 40))
 $b.Save((Join-Path $dst "empty.png"), [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
