@@ -1,0 +1,6 @@
+# 개인 가계부 데이터 — 공개 저장소에 올리지 않음
+seed/
+# 이미지 원본(대용량) — 앱은 assets/ 의 최적화본만 사용
+assets/original/
+*.json
+!manifest.webmanifest
