@@ -240,6 +240,7 @@ dialog .sub{font-size:14px;margin-top:4px}
         <input class="field" id="svBank" placeholder="은행" maxlength="20" list="bankDl" aria-label="저축 은행">
         <select class="field" id="svDay" aria-label="저축 이체일"></select>
         <input class="field full" id="svMemo" placeholder="메모" maxlength="30" aria-label="저축 메모">
+        <select class="field full" id="svAcc" aria-label="저축 연결 계좌"></select>
         <button type="submit" class="btn full">저축 추가</button>
       </form>
     </div>
@@ -385,7 +386,7 @@ THEMES.forEach(t=>{const b=el("button",{type:"button",className:"sw"},[el("i",{s
   b.addEventListener("click",()=>{applyTheme(t.k);renderAll()});$("swatches").append(b)});
 applyTheme(lsGet("pl-theme")||"lemon");
 
-const blank=()=>({v:1,income:0,items:[],checks:{},budget:[],entries:[],accounts:[]});
+const blank=()=>({v:1,income:0,items:[],checks:{},budget:[],entries:[],accounts:[],saveLog:{}});
 let S=blank();
 let cur=today().slice(0,7), selDay=null, pieMode="all", editId=null;
 const ED={bud:false,fixed:false,save:false,acc:false};
@@ -410,7 +411,19 @@ const grpOf=it=>(it.group||"").trim()||"기타";
 function fixedGroups(){const m=new Map();its("fixed").forEach(it=>{const g=grpOf(it);if(!m.has(g))m.set(g,[]);m.get(g).push(it)});
   return [...m].map(([name,list])=>({name,list,v:sumOf(list)})).sort((a,b)=>b.v-a.v)}
 const grpColor=i=>{const k=S.budget.length+i;return k<COLORS.length?"var("+COLORS[k]+")":"var(--c0)"};
-const accBal=a=>(a.base||0)+Object.values(a.deposits||{}).reduce((s,v)=>s+(Number(v)||0),0);
+// 저축↔계좌 연동: 연결된 저축을 그 달에 체크하면, 체크한 시점의 금액(saveLog)이 그 달 계좌 입금으로 잡힘
+const linkedSaves=a=>its("save").filter(it=>it.acc===a.id);
+const logAmt=(m,it)=>{const l=(S.saveLog[m]||{})[it.id];return typeof l==="number"?l:(it.amt||0)};
+const autoDep=(a,m)=>linkedSaves(a).reduce((s,it)=>s+((S.checks[m]||{})[it.id]?logAmt(m,it):0),0);
+const autoAll=a=>Object.keys(S.checks).reduce((s,m)=>s+autoDep(a,m),0);
+const accBal=a=>(a.base||0)+Object.values(a.deposits||{}).reduce((s,v)=>s+(Number(v)||0),0)+autoAll(a);
+function setCheck(m,it,on){const c=S.checks[m]=S.checks[m]||{};
+  if(on){c[it.id]=true;if(it.type==="save")(S.saveLog[m]=S.saveLog[m]||{})[it.id]=it.amt||0}
+  else{delete c[it.id];if(S.saveLog[m])delete S.saveLog[m][it.id]}}
+function accSelect(id,val,label,on){const s=el("select",{className:"field",id});s.setAttribute("aria-label",label);
+  s.append(el("option",{value:"",textContent:"연결 계좌 없음"}));S.accounts.forEach(a=>s.append(el("option",{value:a.id,textContent:a.name+" 계좌로",selected:a.id===val})));
+  s.addEventListener("change",()=>on(s.value));return s}
+function renderSvAcc(){const s=$("svAcc"),v=s.value;s.replaceChildren(el("option",{value:"",textContent:"연결 계좌 없음"}));S.accounts.forEach(a=>s.append(el("option",{value:a.id,textContent:a.name+" 계좌로"})));if([...s.options].some(o=>o.value===v))s.value=v}
 const dayLabel=k=>{const d=new Date(k+"T00:00");return (d.getMonth()+1)+"월 "+d.getDate()+"일 ("+WD[d.getDay()]+")"};
 
 // ---- 공통 위젯 ----
@@ -487,9 +500,10 @@ function renderBud(){
 function fixRow(it,ch){
   const row=el("div",{className:"vrow"+(ch[it.id]?" done":"")});
   const cb=el("input",{type:"checkbox",id:"ck-"+it.id,checked:!!ch[it.id]});cb.setAttribute("aria-label",it.name+" 이번 달 완료");
-  cb.addEventListener("change",()=>{const c=S.checks[cur]=S.checks[cur]||{};if(cb.checked)c[it.id]=true;else delete c[it.id];row.classList.toggle("done",cb.checked);refreshSummary();save()});
+  cb.addEventListener("change",()=>{setCheck(cur,it,cb.checked);row.classList.toggle("done",cb.checked);refreshSummary();if(it.type==="save")renderAst();save()});
   const nm=el("label",{className:"nm",htmlFor:"ck-"+it.id},[it.name]);
-  const sub=[it.day?"매월 "+it.day+"일":"",it.bank,it.memo].map(v=>(v||"").trim()).filter((v,i,a)=>v&&a.indexOf(v)===i).join(" · ");if(sub)nm.append(el("small",{textContent:sub}));
+  const la=it.acc&&S.accounts.find(a=>a.id===it.acc);
+  const sub=[it.day?"매월 "+it.day+"일":"",it.bank,it.memo,la?"→ "+la.name:""].map(v=>(v||"").trim()).filter((v,i,a)=>v&&a.indexOf(v)===i).join(" · ");if(sub)nm.append(el("small",{textContent:sub}));
   row.append(cb,nm,el("span",{className:"num",textContent:won(it.amt||0)}));return row;
 }
 function renderFixed(){
@@ -505,7 +519,7 @@ function renderFixed(){
       bankInput(it,it.name),
       dayInput(it),
       textInput("im-"+it.id,it.memo,it.name+" 메모",v=>{it.memo=v;save()},"메모"),
-      ...(t==="save"?[el("span")]:[]),
+      ...(t==="save"?[accSelect("ix-"+it.id,it.acc,it.name+" 연결 계좌",v=>{if(v)it.acc=v;else delete it.acc;renderSta();save()})]:[]),
       el("div",{className:"act"},[el("span"),delBtn(()=>{S.items=S.items.filter(x=>x.id!==it.id);renderAll();save()})])])));return}
     if(t==="save"){list.forEach(it=>b.append(fixRow(it,ch)));return}
     fixedGroups().forEach((g,i)=>{
@@ -634,15 +648,18 @@ function renderAst(){
       const sel=el("select",{className:"field",id:"at-"+a.id});[["now","지금 쓸 수 있음"],["lock","만기·해지 전엔 못 씀"]].forEach(([v,t])=>sel.append(el("option",{value:v,textContent:t,selected:a.type===v})));
       sel.setAttribute("aria-label",a.name+" 사용 시점");sel.addEventListener("change",()=>{a.type=sel.value;astTotals();save()});
       box.append(el("div",{className:"erow"},[
-        textInput("an-"+a.id,a.name,"계좌 이름",(v,i)=>{a.name=v||a.name;i.value=a.name;save()},"계좌 이름"),
+        textInput("an-"+a.id,a.name,"계좌 이름",(v,i)=>{a.name=v||a.name;i.value=a.name;renderFixed();renderSvAcc();save()},"계좌 이름"),
         moneyInput("ab-"+a.id,a.base,a.name+" 기존 금액",v=>{a.base=v;astTotals();save()},"기존 금액"),
-        el("div",{className:"act"},[sel,delBtn(()=>{S.accounts=S.accounts.filter(x=>x.id!==a.id);renderAst();save()})])]));
+        el("div",{className:"act"},[sel,delBtn(()=>{S.accounts=S.accounts.filter(x=>x.id!==a.id);S.items.forEach(it=>{if(it.acc===a.id)delete it.acc});renderAll();save()})])]));
       return}
     const bal=el("b",{className:"num",textContent:won(accBal(a))});
-    const dep=el("div",{className:"dep wide"},[el("label",{htmlFor:"ad-"+a.id,textContent:"+ "+ml+" 저축"}),
+    const ls=linkedSaves(a),extra=[];
+    if(ls.length){const ch=S.checks[cur]||{},ad=autoDep(a,cur),pend=ls.filter(it=>!ch[it.id]);
+      extra.push(el("small",{className:"wide",textContent:"연결: "+ls.map(it=>it.name).join(", ")+" · "+ml+" 자동 +"+won(ad)+(pend.length?" (미체크 "+pend.map(it=>it.name+" "+won(it.amt||0)).join(", ")+")":"")}))}
+    const dep=el("div",{className:"dep wide"},[el("label",{htmlFor:"ad-"+a.id,textContent:ls.length?"+ "+ml+" 추가 입금":"+ "+ml+" 저축"}),
       moneyInput("ad-"+a.id,a.deposits[cur]||0,a.name+" "+ml+" 저축액",v=>{if(v>0)a.deposits[cur]=v;else delete a.deposits[cur];bal.textContent=won(accBal(a));astTotals();save()})]);
     const nm=el("span",{className:"nm",textContent:a.name});nm.append(el("small",{textContent:a.type==="lock"?"묶임":"바로 씀"}));
-    box.append(el("div",{className:"vrow"},[el("span"),nm,bal,dep]));
+    box.append(el("div",{className:"vrow"},[el("span"),nm,bal,...extra,dep]));
   });
 }
 document.querySelectorAll("[data-pie]").forEach(b=>b.addEventListener("click",()=>{pieMode=b.dataset.pie;document.querySelectorAll("[data-pie]").forEach(x=>x.setAttribute("aria-pressed",x===b));renderSta()}));
@@ -652,15 +669,16 @@ const numFmt=id=>$(id).addEventListener("input",e=>{e.target.value=fmtIn(toNum(e
 ["budAmt","fxAmt","svAmt","exAmt","acAmt"].forEach(numFmt);
 fillDays($("fxDay"));fillDays($("svDay"));
 $("income").addEventListener("input",e=>{const v=toNum(e.target.value);e.target.value=fmtIn(v);S.income=v;refreshSummary();renderBud();save()});
-[["fixed","allFixed"],["save","allSave"]].forEach(([t,a])=>$(a).addEventListener("change",e=>{const c=S.checks[cur]=S.checks[cur]||{};its(t).forEach(x=>{if(e.target.checked)c[x.id]=true;else delete c[x.id]});renderFixed();refreshSummary();save()}));
+[["fixed","allFixed"],["save","allSave"]].forEach(([t,a])=>$(a).addEventListener("change",e=>{its(t).forEach(x=>setCheck(cur,x,e.target.checked));renderFixed();refreshSummary();renderAst();save()}));
 [["budEd","bud"],["fixedEd","fixed"],["saveEd","save"]].forEach(([b,k])=>$(b).addEventListener("click",()=>{ED[k]=!ED[k];renderAll()}));
 $("accEd").addEventListener("click",()=>{ED.acc=!ED.acc;renderAst()});
 $("budAdd").addEventListener("submit",e=>{e.preventDefault();const n=$("budName").value.trim();if(!n)return;S.budget.push({id:uid("b"),name:n,amt:toNum($("budAmt").value),bank:$("budBank").value.trim()});$("budName").value="";$("budAmt").value="";$("budBank").value="";renderAll();save()});
 [["fixedAdd","fixed","fx"],["saveAdd","save","sv"]].forEach(([f,t,p])=>$(f).addEventListener("submit",e=>{e.preventDefault();const n=$(p+"Name").value.trim();if(!n)return;
   const it={id:uid("l"),name:n,amt:toNum($(p+"Amt").value),memo:$(p+"Memo").value.trim(),bank:$(p+"Bank").value.trim(),type:t};$(p+"Bank").value="";if(t==="fixed"){const g=$("fxGroup").value.trim();if(g)it.group=g;$("fxGroup").value=""}
   const d=toDay($(p+"Day").value);if(d)it.day=d;$(p+"Day").value="";
+  if(t==="save"){const ac=$("svAcc").value;if(ac)it.acc=ac}
   S.items.push(it);$(p+"Name").value="";$(p+"Amt").value="";$(p+"Memo").value="";renderAll();save()}));
-$("accAdd").addEventListener("submit",e=>{e.preventDefault();const n=$("acName").value.trim();if(!n)return;S.accounts.push({id:uid("a"),name:n,base:toNum($("acAmt").value),deposits:{},type:$("acType").value});$("acName").value="";$("acAmt").value="";renderAst();save()});
+$("accAdd").addEventListener("submit",e=>{e.preventDefault();const n=$("acName").value.trim();if(!n)return;S.accounts.push({id:uid("a"),name:n,base:toNum($("acAmt").value),deposits:{},type:$("acType").value});$("acName").value="";$("acAmt").value="";renderAll();save()});
 $("expAdd").addEventListener("submit",e=>{e.preventDefault();const v=toNum($("exAmt").value),err=$("exErr");
   if(!v){err.textContent="금액을 입력하세요.";err.hidden=false;return}err.hidden=true;
   S.entries.push({id:uid("e"),date:selDay,cat:$("exCat").value,amt:v,memo:$("exMemo").value.trim()});$("exAmt").value="";$("exMemo").value="";
@@ -674,15 +692,16 @@ $("setOpen").addEventListener("click",()=>{$("impMsg").textContent="";$("setDlg"
 $("setClose").addEventListener("click",()=>$("setDlg").close());
 
 function renderAll(){const [y,m]=cur.split("-");$("mLabel").textContent=y+"년 "+Number(m)+"월";
-  renderCatSelect();renderGrpList();renderBankDl();renderBud();renderFixed();refreshSummary();renderExp();renderSta()}
+  renderCatSelect();renderGrpList();renderBankDl();renderSvAcc();renderBud();renderFixed();refreshSummary();renderExp();renderSta()}
 
 // ---- 저장: 이 기기(localStorage). 읽기(merge)와 쓰기(flush)는 같은 필드 집합 ----
 let timer=null;
 const status=t=>$("saveStatus").textContent=t;
 function merge(d){if(!d||typeof d!=="object")return;d=JSON.parse(JSON.stringify(d));
   if(typeof d.income==="number")S.income=d.income;
-  if(Array.isArray(d.items))S.items=d.items.filter(x=>x&&x.id&&typeof x.name==="string").map(x=>({id:String(x.id),name:x.name.slice(0,40),amt:Number(x.amt)||0,memo:String(x.memo||"").slice(0,40),bank:String(x.bank!==undefined?x.bank:(x.memo||"")).slice(0,20),type:x.type==="save"?"save":"fixed",...(x.group?{group:String(x.group).slice(0,20)}:{}),...(toDay(x.day)?{day:toDay(x.day)}:{})}));
+  if(Array.isArray(d.items))S.items=d.items.filter(x=>x&&x.id&&typeof x.name==="string").map(x=>({id:String(x.id),name:x.name.slice(0,40),amt:Number(x.amt)||0,memo:String(x.memo||"").slice(0,40),bank:String(x.bank!==undefined?x.bank:(x.memo||"")).slice(0,20),type:x.type==="save"?"save":"fixed",...(x.group?{group:String(x.group).slice(0,20)}:{}),...(toDay(x.day)?{day:toDay(x.day)}:{}),...(x.acc?{acc:String(x.acc)}:{})}));
   if(d.checks&&typeof d.checks==="object")S.checks=d.checks;
+  if(d.saveLog&&typeof d.saveLog==="object")S.saveLog=Object.fromEntries(Object.entries(d.saveLog).filter(([k,v])=>/^\d{4}-\d{2}$/.test(k)&&v&&typeof v==="object").map(([k,v])=>[k,Object.fromEntries(Object.entries(v).map(([i,n])=>[i,Number(n)||0]))]));
   if(Array.isArray(d.budget))S.budget=d.budget.filter(x=>x&&x.id).map(x=>Object.assign({id:String(x.id),name:String(x.name||"").slice(0,20),amt:Number(x.amt)||0,bank:String(x.bank||"").slice(0,20)},x.carry?{carry:true,carryFrom:/^\d{4}-\d{2}$/.test(x.carryFrom)?x.carryFrom:undefined,...(Number.isFinite(x.carryBase)?{carryBase:x.carryBase}:{})}:{}));
   if(Array.isArray(d.entries))S.entries=d.entries.filter(x=>x&&x.id&&Number(x.amt)>0).map(x=>({id:String(x.id),date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:null,month:/^\d{4}-\d{2}$/.test(x.month)?x.month:undefined,cat:String(x.cat||"etc"),amt:Number(x.amt),memo:String(x.memo||"").slice(0,40)}));
   if(Array.isArray(d.accounts))S.accounts=d.accounts.filter(a=>a&&a.id).map(a=>({id:String(a.id),name:String(a.name||"").slice(0,30),base:Number(a.base)||0,deposits:a.deposits&&typeof a.deposits==="object"?Object.fromEntries(Object.entries(a.deposits).map(([k,v])=>[k,Number(v)||0])):{},type:a.type==="lock"?"lock":"now"}));
@@ -691,7 +710,7 @@ function merge(d){if(!d||typeof d!=="object")return;d=JSON.parse(JSON.stringify(
 let cloudMode=false,cloudUser=null,pushSeq=0;
 const plain=()=>JSON.parse(JSON.stringify(S));
 function save(){clearTimeout(timer);status("저장 대기…");timer=setTimeout(flush,500)}
-function flush(){clearTimeout(timer);timer=null;const ok=lsSet("pl-state",JSON.stringify(S));
+function flush(){clearTimeout(timer);timer=null;if(cloudMode&&!cloudUser)return;const ok=lsSet("pl-state",JSON.stringify(S));
   if(!(cloudMode&&cloudUser&&window.Cloud)){status(ok?"이 기기에 저장됨":"저장 실패 · 저장 공간을 확인하세요");return}
   const n=++pushSeq;status(navigator.onLine?"저장 중…":"오프라인 · 연결되면 올라가요");
   Cloud.save(plain()).then(()=>{if(n===pushSeq)status("클라우드에 저장됨")},e=>{if(n===pushSeq)status("클라우드 저장 실패 · "+(e.code||"오류"))})}
@@ -701,8 +720,9 @@ function replaceAll(d){S=blank();merge(d);ED.bud=ED.fixed=ED.save=ED.acc=false;e
 window.onCloudReady=on=>{cloudMode=on;$("acctBox").hidden=!on;if(on)status("로그인 확인 중…")};
 // 기기 사본의 주인(pl-owner = uid). 다른 계정이면 사본을 지우고, 주인 없는 사본은 물어보고 올림
 let prevOwner=null;
-window.onCloudUser=(email,uid)=>{cloudUser=email;$("auth").hidden=!!email;$("acctEmail").textContent=email||"";
-  if(!uid)return;
+window.onCloudUser=(email,uid)=>{const had=cloudUser;cloudUser=email;$("auth").hidden=!!email;$("acctEmail").textContent=email||"";
+  // 로그인이 풀리면(다른 탭 로그아웃 등) 계정에 묶인 화면·기기 사본 삭제. 주인 없는 사본은 유지
+  if(!uid){if(had||lsGet("pl-owner")){clearTimeout(timer);timer=null;try{localStorage.removeItem("pl-state")}catch(e){}replaceAll({})}return}
   prevOwner=lsGet("pl-owner");
   if(prevOwner&&prevOwner!==uid){try{localStorage.removeItem("pl-state")}catch(e){}replaceAll({});prevOwner=null}
   lsSet("pl-owner",uid);status("불러오는 중…")};
@@ -728,9 +748,10 @@ $("auSignup").addEventListener("click",()=>{if(!$("authForm").reportValidity())r
 $("auReset").addEventListener("click",()=>authRun(async(C,m)=>{await C.reset(m);$("auMsg").textContent=m+" 로 비밀번호 재설정 메일을 보냈어요."}).then(()=>{}));
 $("logoutBtn").addEventListener("click",async()=>{if(!confirm("로그아웃할까요? 이 기기에 남은 사본도 지워요."))return;
   const msg=$("impMsg");msg.textContent="로그아웃 중…";
-  try{await Cloud.signOut()}catch(e){msg.textContent=e&&e.code==="pending-writes"?"아직 클라우드에 안 올라간 기록이 있어요. 인터넷 연결 후 다시 시도하세요.":"로그아웃 중 문제가 생겼어요. 다른 탭을 닫고 다시 시도하세요.";return}
-  try{localStorage.removeItem("pl-state");localStorage.removeItem("pl-owner")}catch(e){}
-  location.reload()});
+  try{await Cloud.signOut()}catch(e){if(e&&e.code==="pending-writes"){msg.textContent="아직 클라우드에 안 올라간 기록이 있어요. 인터넷 연결 후 다시 시도하세요.";return}}
+  // 로그아웃 이후 단계가 실패해도 앱 사본은 반드시 삭제
+  clearTimeout(timer);timer=null;try{localStorage.removeItem("pl-state");localStorage.removeItem("pl-owner")}catch(e){}
+  replaceAll({});location.reload()});
 
 // ---- 백업 내보내기 / 가져오기 (같은 형식) ----
 async function exportBackup(){const name="pastelledger-backup-"+today()+".json",file=new File([JSON.stringify(plain())],name,{type:"application/json"});
@@ -752,7 +773,10 @@ function purgeStats(M){return{ent:S.entries.filter(e=>entMonth(e)&&entMonth(e)<M
 function purgeBefore(M){
   S.budget.forEach(b=>{if(b.carry&&b.carryFrom&&b.carryFrom<M){b.carryBase=carryIn(b,M);b.carryFrom=M}});
   S.entries=S.entries.filter(e=>!entMonth(e)||entMonth(e)>=M);
+  // 지워질 달의 연동 자동 입금은 체크 기록을 지우기 전에 기존 금액으로 합침
+  S.accounts.forEach(a=>Object.keys(S.checks).forEach(k=>{if(k<M)a.base=(a.base||0)+autoDep(a,k)}));
   Object.keys(S.checks).forEach(k=>{if(k<M)delete S.checks[k]});
+  Object.keys(S.saveLog).forEach(k=>{if(k<M)delete S.saveLog[k]});
   S.accounts.forEach(a=>Object.entries(a.deposits||{}).forEach(([k,v])=>{if(k<M){a.base=(a.base||0)+(Number(v)||0);delete a.deposits[k]}}));
 }
 function renderPurge(){

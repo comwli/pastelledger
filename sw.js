@@ -1,5 +1,5 @@
 // 오프라인 캐시: 캐시 먼저 응답하고 뒤에서 새 버전으로 갱신
-const CACHE = "pl-v4";
+const CACHE = "pl-v5";
 const CORE = ["./", "index.html", "cloud.js", "firebase-config.js", "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 const FB = "https://www.gstatic.com/firebasejs/";
 
