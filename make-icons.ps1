@@ -1,4 +1,4 @@
-﻿# assets/icon-1024.png 로 홈 화면 아이콘(180/192/512) 생성. 원본이 없으면 레몬색 임시 아이콘
+﻿# assets/icon-1024.png 로 홈 화면 아이콘(180/192/512) 생성. 원본이 없으면 임시 아이콘
 Add-Type -AssemblyName System.Drawing
 $root = $PSScriptRoot
 $src = Join-Path $root "assets\icon-1024.png"
