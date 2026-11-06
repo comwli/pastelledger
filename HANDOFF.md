@@ -28,7 +28,23 @@ cp handoff/claude-config/CLAUDE.md ~/.claude/CLAUDE.md
 cp handoff/claude-config/rules/procedure-rules.md ~/.claude/rules/
 cp handoff/claude-config/hooks/procedure-rules.sh ~/.claude/hooks/
 ```
-- `settings-hooks.json`은 `~/.claude/settings.json`의 `hooks` 부분만 뽑은 것. 다른 PC의 `settings.json`에 **덮어쓰지 말고 `"hooks"` 항목만 합친다** (이미 `hooks`가 있으면 `UserPromptSubmit` 배열에 추가).
+- 아래는 이 PC `~/.claude/settings.json`의 `hooks` 부분(17~30줄) 그대로. 다른 PC의 `settings.json`에 **덮어쓰지 말고 `"hooks"` 항목만 합친다** (이미 `hooks`가 있으면 `UserPromptSubmit` 배열에 추가).
+```json
+"hooks": {
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "shell": "bash",
+          "command": "bash \"$HOME/.claude/hooks/procedure-rules.sh\"",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
+```
 - 다른 PC에 이미 `~/.claude/CLAUDE.md`가 있으면 덮어쓰기 전에 내용 확인.
 - 참고: 이 PC는 플러그인 `superpowers`, `code-review`, `code-simplifier`, `security-guidance`(claude-plugins-official)를 켜 두었음. 규칙과 별개라 복사 대상 아님.
 
